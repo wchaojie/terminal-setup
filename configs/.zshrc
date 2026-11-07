@@ -2,10 +2,20 @@
 # ─── terminal-setup: Zsh config ─────────────────────────────────────
 # Powered by: Starship + zsh-autosuggestions + zsh-syntax-highlighting + fzf + fnm
 
-# ─── Homebrew ────────────────────────────────────────────────────────
+# ─── Environment & PATH ──────────────────────────────────────────────
+# 优先加载用户本地 bin 目录与 fnm 路径
+export PATH="$HOME/.local/bin:$HOME/.local/share/fnm:$PATH"
+
+# Homebrew 兼容判断 (macOS Apple Silicon / Intel / Linuxbrew)
 if [[ -d /opt/homebrew ]]; then
     export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
     BREW_PREFIX="/opt/homebrew"
+elif [[ -d /home/linuxbrew/.linuxbrew ]]; then
+    export PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:$PATH"
+    BREW_PREFIX="/home/linuxbrew/.linuxbrew"
+elif [[ -d "$HOME/.linuxbrew" ]]; then
+    export PATH="$HOME/.linuxbrew/bin:$HOME/.linuxbrew/sbin:$PATH"
+    BREW_PREFIX="$HOME/.linuxbrew"
 elif [[ -d /usr/local/Cellar ]]; then
     export PATH="/usr/local/bin:/usr/local/sbin:$PATH"
     BREW_PREFIX="/usr/local"
@@ -13,18 +23,53 @@ else
     BREW_PREFIX=""
 fi
 
-# ─── Starship prompt ────────────────────────────────────────────────
-eval "$(starship init zsh)"
+# Go 环境 (存在时自动加载)
+if [[ -d /usr/local/go ]]; then
+    export GOROOT=/usr/local/go
+    export PATH="$PATH:$GOROOT/bin"
+fi
+if [[ -d "$HOME/go/bin" ]]; then
+    export GOPATH="$HOME/go"
+    export PATH="$PATH:$GOPATH/bin"
+fi
 
-# ─── Zsh plugins (via Homebrew) ──────────────────────────────────────
+# pnpm 环境 (macOS: ~/Library/pnpm, Linux: ~/.local/share/pnpm)
+if [[ -d "$HOME/Library/pnpm" ]]; then
+    export PNPM_HOME="$HOME/Library/pnpm"
+elif [[ -d "$HOME/.local/share/pnpm" ]]; then
+    export PNPM_HOME="$HOME/.local/share/pnpm"
+else
+    [[ "$OSTYPE" == darwin* ]] && export PNPM_HOME="$HOME/Library/pnpm" || export PNPM_HOME="$HOME/.local/share/pnpm"
+fi
+case ":$PATH:" in
+    *":$PNPM_HOME:"*) ;;
+    *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+
+# Bun 环境 (存在时自动加载)
+if [[ -d "$HOME/.bun" ]]; then
+    [ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
+    export BUN_INSTALL="$HOME/.bun"
+    export PATH="$BUN_INSTALL/bin:$PATH"
+fi
+
+# Eza 配色设置
+export EZA_COLORS="di=93:fi=97:ex=92:sn=36:sb=96:uu=95:gu=97:da=37"
+
+# ─── Starship prompt ────────────────────────────────────────────────
+if command -v starship &>/dev/null; then
+    eval "$(starship init zsh)"
+fi
+
+# ─── Zsh plugins & Completions ──────────────────────────────────────
 # Autosuggestions (fish-like suggestions)
 if [[ -n "$BREW_PREFIX" && -f "$BREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh" ]]; then
     source "$BREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
 elif [[ -f /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]]; then
     source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-    ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
-    ZSH_AUTOSUGGEST_STRATEGY=(history completion)
 fi
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
+ZSH_AUTOSUGGEST_STRATEGY=(history completion)
 
 # Completions
 if [[ -n "$BREW_PREFIX" && -d "$BREW_PREFIX/share/zsh-completions" ]]; then
@@ -48,47 +93,90 @@ setopt HIST_IGNORE_SPACE
 setopt SHARE_HISTORY
 setopt INC_APPEND_HISTORY
 
-# ─── History prefix search (↑/↓) ─────────────────────────────────────
-# up-line-or-beginning-search: cursor stays at prefix position,
-# matched tail shown as gray autosuggestion — type more to narrow.
+# ─── Key Bindings ────────────────────────────────────────────────────
+# 1. Home & End 键
+bindkey '^[[H' beginning-of-line      # xterm
+bindkey '^[[F' end-of-line            # xterm
+bindkey '^[[1~' beginning-of-line     # tmux, screen, rxvt, putty
+bindkey '^[[4~' end-of-line           # tmux, screen, rxvt, putty
+bindkey '^[OH' beginning-of-line      # 某些特定终端
+bindkey '^[OF' end-of-line            # 某些特定终端
+
+# 2. Ctrl + Left / Right (按单词左右移动)
+bindkey '^[[1;5D' backward-word
+bindkey '^[[1;5C' forward-word
+bindkey '^[OD' backward-word
+bindkey '^[OC' forward-word
+bindkey '^[[5D' backward-word
+bindkey '^[[5C' forward-word
+
+# 3. 删除类按键
+bindkey '^[[3~' delete-char           # Delete 键向后删除
+
+# 4. 智能历史前缀搜索 (↑ / ↓ 箭头)
 autoload -U up-line-or-beginning-search down-line-or-beginning-search
 zle -N up-line-or-beginning-search
 zle -N down-line-or-beginning-search
 bindkey '^[[A' up-line-or-beginning-search
 bindkey '^[[B' down-line-or-beginning-search
 
+# 5. PageUp & PageDown 键
+bindkey '^[[5~' up-line-or-history
+bindkey '^[[6~' down-line-or-history
+
+# 6. Alt + S 快捷在命令行首添加 / 取消 sudo
+sudo-command-line() {
+    [[ -z $BUFFER ]] && zle up-history
+    if [[ $BUFFER == sudo\ * ]]; then
+        BUFFER="${BUFFER#sudo }"
+    else
+        BUFFER="sudo $BUFFER"
+    fi
+    zle end-of-line
+}
+zle -N sudo-command-line
+bindkey '^[s' sudo-command-line
+
 # ─── fzf ─────────────────────────────────────────────────────────────
 if [[ -f ~/.fzf.zsh ]]; then
     source ~/.fzf.zsh
 elif command -v fzf &>/dev/null; then
-    eval "$(fzf --zsh 2>/dev/null)"
+    eval "$(fzf --zsh 2>/dev/null)" || {
+        # 兼容 Debian/Ubuntu apt 安装的 fzf 键位绑定路径
+        [[ -f /usr/share/doc/fzf/examples/key-bindings.zsh ]] && source /usr/share/doc/fzf/examples/key-bindings.zsh
+        [[ -f /usr/share/doc/fzf/examples/completion.zsh ]] && source /usr/share/doc/fzf/examples/completion.zsh
+    }
 fi
 export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --border'
-# Use fd for fzf if available
+
+# 自动适配 fd 或 Debian/Ubuntu 的 fdfind
 if command -v fd &>/dev/null; then
     export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
     export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
     export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
+elif command -v fdfind &>/dev/null; then
+    export FZF_DEFAULT_COMMAND='fdfind --type f --hidden --follow --exclude .git'
+    export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+    export FZF_ALT_C_COMMAND='fdfind --type d --hidden --follow --exclude .git'
 fi
 
 # ─── Zoxide (smart cd) ──────────────────────────────────────────────
-eval "$(zoxide init zsh)"
+if command -v zoxide &>/dev/null; then
+    eval "$(zoxide init zsh)"
+fi
 
 # ─── fnm (Node version manager) ─────────────────────────────────────
 if command -v fnm &>/dev/null; then
     eval "$(fnm env --use-on-cd --shell zsh)"
 fi
 
-# ─── SSH key switcher (fallback for multi-account setups) ────────────
-# Usage: set-ssh-key lewis-official-20260224
-# Prefer ~/.ssh/config Host aliases for automatic matching.
-# This is a fallback for edge cases where you need to force a specific key.
+# ─── SSH key switcher ────────────────────────────────────────────────
 function set-ssh-key() {
     local key="$HOME/.ssh/$1"
     if [[ ! -f "$key" ]]; then
         echo "Key not found: $key" >&2
         echo "Available keys:" >&2
-        ls ~/.ssh/*.pub 2>/dev/null | sed 's/.*\//  /; s/\.pub$//' >&2
+        command ls ~/.ssh/*.pub 2>/dev/null | sed 's/.*\//  /; s/\.pub$//' >&2
         return 1
     fi
     ssh-add -D 2>/dev/null
@@ -97,25 +185,47 @@ function set-ssh-key() {
 }
 
 # ─── Aliases ─────────────────────────────────────────────────────────
+# System & modern coreutils
 alias ls='eza --icons --group-directories-first'
-alias ll='eza -la --icons --group-directories-first'
-alias lt='eza --tree --icons --level=2'
+alias la='eza -a --icons --group-directories-first'
+alias l='eza -lg --icons --group-directories-first'
+alias ll='eza -lga --icons --group-directories-first'
+alias lt='eza -a --tree --icons --level=2'
 alias cat='bat'
 alias find='fd'
 alias grep='rg'
 alias top='btop'
 alias lg='lazygit'
+alias y='yazi'
+alias yz='yazi'
+alias sr='sudo -i'
+alias dus='du -d 1 -h | sort -hr'
 
-# ─── pnpm ────────────────────────────────────────────────────────────
-export PNPM_HOME="$HOME/Library/pnpm"
-case ":$PATH:" in
-    *":$PNPM_HOME:"*) ;;
-    *) export PATH="$PNPM_HOME:$PATH" ;;
-esac
+# 兼容 Debian/Ubuntu 命令名
+command -v batcat &>/dev/null && alias bat='batcat'
+command -v fdfind &>/dev/null && alias fd='fdfind'
 
-# ─── zsh-syntax-highlighting ──────────────────────────────────────────
-# Load this at the very end of .zshrc so widgets created by compinit,
-# zle -N, and other plugins are included in syntax highlighting.
+# Docker
+alias dk='sudo docker'
+alias dkp='sudo docker ps -a'
+alias dki='sudo docker images -a'
+alias dke='sudo docker exec -it'
+alias dks='sudo docker stats --no-stream'
+
+# Git
+alias gs="git status"
+alias ga="git add -A"
+alias gc="git commit -m"
+alias gac='git add -A && git commit -m'
+alias gco="git checkout"
+alias gpl="git pull"
+alias gps="git push"
+alias gl="git log --color --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit"
+alias gb="git branch"
+alias gd="git diff"
+alias gr="git reset"
+
+# ─── zsh-syntax-highlighting (保持在最底部) ──────────────────────────
 if [[ -n "$BREW_PREFIX" && -f "$BREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]]; then
     source "$BREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
 elif [[ -f /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]]; then

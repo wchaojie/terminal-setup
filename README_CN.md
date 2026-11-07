@@ -90,7 +90,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/lewislulu/terminal-setup/mai
 |------|------|
 | **[Ghostty](https://ghostty.org)** | GPU 加速终端模拟器 |
 | **Fish** 或 **Zsh** | Shell（你选） |
-| **[Starship](https://starship.rs)** | 跨 Shell 提示符（Catppuccin Mocha 主题） |
+| **[Starship](https://starship.rs)** | 跨 Shell 提示符（Gruvbox Rainbow 预设） |
 | **MesloLGS NF** | Nerd Font，提供图标和 Powerline 字形 |
 | **[bat](https://github.com/sharkdp/bat)** | 带语法高亮和行号的 `cat` |
 | **[eza](https://github.com/eza-community/eza)** | 带图标、git 状态、树形视图的 `ls` |
@@ -103,6 +103,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/lewislulu/terminal-setup/mai
 | **[tldr](https://github.com/tldr-pages/tldr)** | 简化版 man 手册，附带示例 |
 | **[delta](https://github.com/dandavison/delta)** | 带语法高亮的 git diff |
 | **[lazygit](https://github.com/jesseduffield/lazygit)** | Git 终端 UI |
+| **[yazi](https://github.com/sxyazi/yazi)** | 极速现代终端文件管理器 |
 | **[fnm](https://github.com/Schniz/fnm)** | 快速 Node 版本管理器（Rust 编写） |
 | **[Zellij](https://zellij.dev)** | 现代终端复用器（可选） |
 
@@ -113,7 +114,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/lewislulu/terminal-setup/mai
 3. 下载 **MesloLGS NF** Nerd 字体
 4. 安装你选择的 **Shell** + 插件
 5. 安装所有 **CLI 工具**（macOS 用 Homebrew，Linux 用 apt + GitHub releases）
-6. 安装 **Starship** 提示符 + Catppuccin Mocha 配置
+6. 安装 **Starship** 提示符 + Gruvbox Rainbow 预设配置
 7. 安装 **fnm** + **Node.js** LTS（可选）
 8. 安装 **Zellij** 终端复用器（可选）
 9. 部署所有配置文件（已有配置会加时间戳备份）

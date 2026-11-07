@@ -90,7 +90,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/lewislulu/terminal-setup/mai
 |-----------|------|
 | **[Ghostty](https://ghostty.org)** | GPU-accelerated terminal emulator |
 | **Fish** or **Zsh** | Shell (your choice) |
-| **[Starship](https://starship.rs)** | Cross-shell prompt (Catppuccin Mocha theme) |
+| **[Starship](https://starship.rs)** | Cross-shell prompt (Gruvbox Rainbow preset) |
 | **MesloLGS NF** | Nerd Font for icons & powerline glyphs |
 | **[bat](https://github.com/sharkdp/bat)** | `cat` with syntax highlighting & line numbers |
 | **[eza](https://github.com/eza-community/eza)** | `ls` with icons, git status, tree view |
@@ -103,6 +103,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/lewislulu/terminal-setup/mai
 | **[tldr](https://github.com/tldr-pages/tldr)** | Simplified man pages with examples |
 | **[delta](https://github.com/dandavison/delta)** | Beautiful git diffs with syntax highlighting |
 | **[lazygit](https://github.com/jesseduffield/lazygit)** | Git TUI |
+| **[yazi](https://github.com/sxyazi/yazi)** | Blazing fast terminal file manager |
 | **[fnm](https://github.com/Schniz/fnm)** | Fast Node Manager (Rust) |
 | **[Zellij](https://zellij.dev)** | Modern terminal multiplexer (optional) |
 
@@ -113,7 +114,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/lewislulu/terminal-setup/mai
 3. Downloads **MesloLGS NF** nerd fonts
 4. Installs your **shell** of choice + plugins
 5. Installs all **CLI tools** (Homebrew on macOS, apt + GitHub releases on Linux)
-6. Installs **Starship** prompt with Catppuccin Mocha config
+6. Installs **Starship** prompt with Gruvbox Rainbow preset
 7. Installs **fnm** + **Node.js** LTS (optional)
 8. Installs **Zellij** terminal multiplexer (optional)
 9. Deploys all config files (existing configs are backed up with timestamps)

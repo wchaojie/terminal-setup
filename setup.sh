@@ -5,9 +5,9 @@
 # Platforms: macOS, Debian/Ubuntu, Windows (via WSL)
 #
 # Stack: Ghostty + (Fish or Zsh) + Starship + Nerd Font (MesloLGS)
-# Tools: bat, eza, fd, ripgrep, btop, zoxide, jq, tldr, delta, lazygit, fzf
+# Tools: bat, eza, fd, ripgrep, btop, zoxide, jq, tldr, delta, lazygit, fzf, yazi
 # Node:  fnm (Fast Node Manager) — works with both Fish and Zsh
-# Theme: Catppuccin Mocha (Starship)
+# Theme: Gruvbox Rainbow (Starship)
 #
 # Usage:
 #   ./setup.sh              # interactive shell choice
@@ -222,6 +222,7 @@ case "$OS" in
         pkg_install "wget"
         pkg_install "unzip"
         pkg_install "build-essential"
+        pkg_install "file"
         success "apt package manager ready"
         ;;
 esac
@@ -337,10 +338,14 @@ install_shell_macos() {
             success "Fish already installed"
         fi
 
-        FISH_PATH="$(which fish)"
+        FISH_PATH="$(which fish 2>/dev/null || echo "/opt/homebrew/bin/fish")"
         if ! grep -qxF "$FISH_PATH" /etc/shells 2>/dev/null; then
             info "Adding Fish to /etc/shells (may need sudo)..."
-            echo "$FISH_PATH" | sudo tee -a /etc/shells >/dev/null
+            if $DRY_RUN; then
+                echo -e "${YELLOW}[DRY-RUN]${NC} echo $FISH_PATH | sudo tee -a /etc/shells"
+            else
+                echo "$FISH_PATH" | sudo tee -a /etc/shells >/dev/null
+            fi
         fi
 
         if [[ "$SHELL" != "$FISH_PATH" ]]; then
@@ -390,12 +395,15 @@ install_shell_linux() {
             success "Fish already installed"
         fi
 
-        FISH_PATH="$(which fish)"
+        FISH_PATH="$(which fish 2>/dev/null || echo "/usr/bin/fish")"
         if ! grep -qxF "$FISH_PATH" /etc/shells 2>/dev/null; then
             info "Adding Fish to /etc/shells..."
-            echo "$FISH_PATH" | sudo tee -a /etc/shells >/dev/null
+            if $DRY_RUN; then
+                echo -e "${YELLOW}[DRY-RUN]${NC} echo $FISH_PATH | sudo tee -a /etc/shells"
+            else
+                echo "$FISH_PATH" | sudo tee -a /etc/shells >/dev/null
+            fi
         fi
-
         if [[ "$SHELL" != "$FISH_PATH" ]]; then
             info "Setting Fish as default shell..."
             run_cmd chsh -s "$FISH_PATH"
@@ -468,7 +476,7 @@ echo -e "${BOLD}  🛠  Step 5/9: CLI Tools${NC}"
 echo -e "${BOLD}══════════════════════════════════════════${NC}"
 
 install_cli_tools_macos() {
-    local TOOLS=(bat eza fd ripgrep btop zoxide jq tldr git-delta lazygit fzf)
+    local TOOLS=(bat eza fd ripgrep btop zoxide jq tldr git-delta lazygit fzf yazi)
     for tool in "${TOOLS[@]}"; do
         if brew list "$tool" &>/dev/null; then
             success "$tool already installed"
@@ -602,6 +610,55 @@ install_cli_tools_linux() {
         fi
     fi
 
+    # yazi 需要系统内置的 file 命令来探测文件 MIME 类型（例如检测文本、图片、音视频等）
+    if ! has_cmd file; then
+        info "Installing file (required by yazi for MIME type detection)..."
+        pkg_install "file"
+    fi
+
+    # yazi — 终端文件管理器，优先通过 apt 安装，其次使用预置二进制，最后回退至从 GitHub Releases 下载安装
+    if has_cmd yazi; then
+        success "yazi already installed"
+    else
+        info "Installing yazi..."
+        if apt-cache show yazi &>/dev/null 2>&1 && run_cmd sudo apt-get install -y yazi; then
+            success "yazi installed via apt"
+        elif install_bundled_bin yazi; then
+            :
+        else
+            info "Downloading yazi from GitHub releases..."
+            local yazi_arch
+            case "$(uname -m)" in
+                x86_64)  yazi_arch="x86_64" ;;
+                aarch64) yazi_arch="aarch64" ;;
+                *) warn "Unsupported arch for yazi: $(uname -m)"; yazi_arch="" ;;
+            esac
+            if [[ -n "$yazi_arch" ]]; then
+                local yazi_url="https://github.com/sxyazi/yazi/releases/latest/download/yazi-${yazi_arch}-unknown-linux-musl.zip"
+                local yazi_tmp
+                yazi_tmp="$(mktemp -d)"
+                if $DRY_RUN; then
+                    echo -e "${YELLOW}[DRY-RUN]${NC} curl -fsSL $yazi_url -o $yazi_tmp/yazi.zip && unzip -q $yazi_tmp/yazi.zip -d $yazi_tmp && sudo cp $yazi_tmp/yazi-*/yazi $yazi_tmp/yazi-*/ya /usr/local/bin/"
+                else
+                    if curl -fsSL "$yazi_url" -o "$yazi_tmp/yazi.zip" \
+                        && unzip -q "$yazi_tmp/yazi.zip" -d "$yazi_tmp" \
+                        && sudo cp "$yazi_tmp"/yazi-*/yazi /usr/local/bin/yazi \
+                        && sudo chmod +x /usr/local/bin/yazi; then
+                        # 若归档中包含伴生工具 ya，一并安装
+                        if [[ -f "$yazi_tmp"/yazi-*/ya ]]; then
+                            sudo cp "$yazi_tmp"/yazi-*/ya /usr/local/bin/ya
+                            sudo chmod +x /usr/local/bin/ya
+                        fi
+                        success "yazi installed from GitHub releases"
+                    else
+                        warn "Could not install yazi — skipping"
+                    fi
+                    rm -rf "$yazi_tmp"
+                fi
+            fi
+        fi
+    fi
+
     # Ensure ~/.local/bin is in PATH
     if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
         export PATH="$HOME/.local/bin:$PATH"
@@ -619,9 +676,14 @@ echo -e "${BOLD}═════════════════════�
 echo -e "${BOLD}  🚀 Step 6/9: Starship Prompt${NC}"
 echo -e "${BOLD}══════════════════════════════════════════${NC}"
 
-if has_cmd starship; then
-    success "Starship already installed"
-else
+# 安装 Starship 命令行提示符
+# 优先复用已有安装；未安装时在 macOS 下调用 brew，在 Linux 下优先使用预置包，缺失时从 GitHub Releases 下载
+install_starship() {
+    if has_cmd starship; then
+        success "Starship already installed"
+        return 0
+    fi
+
     case "$OS" in
         macos)
             info "Installing Starship..."
@@ -657,7 +719,9 @@ else
             ;;
     esac
     success "Starship installed"
-fi
+}
+
+install_starship
 
 # ─── Step 7: fnm + Node.js (optional) ───────────────────────────────
 echo ""
@@ -722,9 +786,16 @@ echo -e "${BOLD}═════════════════════�
 echo -e "${BOLD}  🪟 Step 8/9: Zellij (optional)${NC}"
 echo -e "${BOLD}══════════════════════════════════════════${NC}"
 
-if has_cmd zellij; then
-    success "Zellij already installed"
-else
+# 安装 Zellij 终端复用器（可选步骤）
+# 优先检测系统是否已安装；若未安装且用户确认安装，
+# 在 macOS 下通过 Homebrew 安装，在 Linux 下优先使用本地预置二进制包，
+# 若无预置文件则自动从 GitHub Releases 下载对应架构的 musl 构建包并解压安装到 /usr/local/bin
+install_zellij() {
+    if has_cmd zellij; then
+        success "Zellij already installed"
+        return 0
+    fi
+
     echo ""
     echo -e "  Zellij is a modern terminal multiplexer (like tmux, but better UX)."
     printf "  Install Zellij? (y/N): "
@@ -767,7 +838,9 @@ else
     else
         info "Skipping Zellij"
     fi
-fi
+}
+
+install_zellij
 
 # ─── Step 9: Config Files ───────────────────────────────────────────
 echo ""
@@ -820,7 +893,12 @@ if [[ -f "$HOME/.config/starship.toml" ]]; then
     run_cmd cp "$HOME/.config/starship.toml" "$HOME/.config/starship.toml.bak.$(date +%s)"
     warn "Backed up existing starship.toml"
 fi
-run_cmd cp "$CONFIGS_DIR/starship.toml" "$HOME/.config/starship.toml"
+info "Applying Starship gruvbox-rainbow preset..."
+if has_cmd starship || $DRY_RUN; then
+    run_cmd starship preset gruvbox-rainbow -o "$HOME/.config/starship.toml"
+else
+    run_cmd cp "$CONFIGS_DIR/starship.toml" "$HOME/.config/starship.toml"
+fi
 success "Starship config deployed"
 
 # --- Shell-specific config ---
@@ -840,17 +918,20 @@ if [[ "$SHELL_CHOICE" == "fish" ]]; then
     else
         # For Linux: use modified config without Homebrew paths
         run_cmd cp "$CONFIGS_DIR/config.fish" "$FISH_CONFIG_DIR/config.fish"
-        # Patch: replace Homebrew paths with Linux equivalents
-        sed -i 's|/opt/homebrew/bin/starship|starship|g' "$FISH_CONFIG_DIR/config.fish"
-        sed -i 's|fish_add_path /opt/homebrew/bin|# PATH: system paths are used on Linux|g' "$FISH_CONFIG_DIR/config.fish"
-        # Fix pnpm path for Linux
-        sed -i 's|\$HOME/Library/pnpm|\$HOME/.local/share/pnpm|g' "$FISH_CONFIG_DIR/config.fish"
+        if ! $DRY_RUN; then
+            # Patch: replace Homebrew paths with Linux equivalents
+            sed -i 's|/opt/homebrew/bin/starship|starship|g' "$FISH_CONFIG_DIR/config.fish"
+            sed -i 's|fish_add_path /opt/homebrew/bin|# PATH: system paths are used on Linux|g' "$FISH_CONFIG_DIR/config.fish"
+            # Fix pnpm path for Linux
+            sed -i 's|\$HOME/Library/pnpm|\$HOME/.local/share/pnpm|g' "$FISH_CONFIG_DIR/config.fish"
+        fi
     fi
     success "Fish config deployed"
 
     # Fish abbreviations (written to config.fish for Fish 3.x & 4.x compat)
     if ! grep -qF 'abbr -a ls' "$FISH_CONFIG_DIR/config.fish" 2>/dev/null; then
         info "Adding Fish abbreviations to config.fish..."
+        if ! $DRY_RUN; then
         cat >> "$FISH_CONFIG_DIR/config.fish" << 'ABBREOF'
 
 # Abbreviations (compatible with Fish 3.x and 4.x)
@@ -864,8 +945,10 @@ if status is-interactive
     abbr -a top "btop"
     abbr -a lg "lazygit"
     abbr -a cd "z"
+    abbr -a y "yazi"
 end
 ABBREOF
+        fi
         success "Fish abbreviations added to config.fish"
     else
         success "Fish abbreviations already present"
@@ -874,6 +957,7 @@ ABBREOF
     # Zoxide + fzf init for fish
     if ! grep -qF "zoxide" "$FISH_CONFIG_DIR/config.fish" 2>/dev/null; then
         info "Adding zoxide + fzf init to fish config..."
+        if ! $DRY_RUN; then
         cat >> "$FISH_CONFIG_DIR/config.fish" << 'FISHEOF'
 
 # zoxide
@@ -888,6 +972,7 @@ if command -q fd
     set -gx FZF_ALT_C_COMMAND 'fd --type d --hidden --follow --exclude .git'
 end
 FISHEOF
+        fi
         success "Zoxide + fzf init added"
     else
         success "Zoxide init already present"
@@ -896,10 +981,12 @@ FISHEOF
     # Add ~/.local/bin to fish PATH on Linux
     if [[ "$OS" == "debian" || "$OS" == "wsl" ]]; then
         if ! grep -qF '.local/bin' "$FISH_CONFIG_DIR/config.fish" 2>/dev/null; then
+            if ! $DRY_RUN; then
             echo '' >> "$FISH_CONFIG_DIR/config.fish"
             echo '# Local bin (Linux)' >> "$FISH_CONFIG_DIR/config.fish"
             echo 'fish_add_path $HOME/.local/bin' >> "$FISH_CONFIG_DIR/config.fish"
         fi
+            fi
     fi
 else
     # Zsh config
@@ -908,28 +995,7 @@ else
         warn "Backed up existing .zshrc"
     fi
 
-    if [[ "$OS" == "macos" ]]; then
-        run_cmd cp "$CONFIGS_DIR/.zshrc" "$HOME/.zshrc"
-    else
-        # Deploy and patch for Linux
-        run_cmd cp "$CONFIGS_DIR/.zshrc" "$HOME/.zshrc"
-
-        # Patch Homebrew paths → Linux paths
-        sed -i 's|export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:\$PATH"|# PATH — system paths on Linux\nexport PATH="$HOME/.local/bin:$PATH"|' "$HOME/.zshrc"
-
-        # Patch zsh plugin source paths
-        sed -i 's|/opt/homebrew/share/zsh-syntax-highlighting/|/usr/share/zsh-syntax-highlighting/|g' "$HOME/.zshrc"
-        sed -i 's|/opt/homebrew/share/zsh-autosuggestions/|/usr/share/zsh-autosuggestions/|g' "$HOME/.zshrc"
-        sed -i 's|/opt/homebrew/share/zsh-completions|/usr/share/zsh-completions|g' "$HOME/.zshrc"
-
-        # Patch pnpm path for Linux
-        sed -i 's|\$HOME/Library/pnpm|\$HOME/.local/share/pnpm|g' "$HOME/.zshrc"
-
-        # Add fnm path for Linux (installed to ~/.local/share/fnm)
-        if ! grep -qF '.local/share/fnm' "$HOME/.zshrc" 2>/dev/null; then
-            sed -i '/# ─── fnm/i # fnm binary path (Linux)\nexport PATH="$HOME/.local/share/fnm:$PATH"\n' "$HOME/.zshrc"
-        fi
-    fi
+    run_cmd cp "$CONFIGS_DIR/.zshrc" "$HOME/.zshrc"
     success "Zsh config deployed"
 fi
 
@@ -978,7 +1044,7 @@ else
     echo -e "    ✨ zsh-autosuggestions   — fish-like suggestions"
     echo -e "    🎨 zsh-syntax-highlight — fish-like highlighting"
 fi
-echo -e "    🚀 Starship             — prompt (Catppuccin Mocha)"
+echo -e "    🚀 Starship             — prompt (Gruvbox Rainbow)"
 echo -e "    🔤 MesloLGS NF          — nerd font"
 echo -e "    🟢 fnm                  — Node version manager (fast!)"
 echo -e "    📦 bat eza fd rg        — modern coreutils"
@@ -986,6 +1052,9 @@ echo -e "    📊 btop                 — system monitor"
 echo -e "    🔀 lazygit + delta      — git tools"
 echo -e "    📁 zoxide               — smart cd"
 echo -e "    🔍 fzf                  — fuzzy finder"
+if has_cmd yazi; then
+    echo -e "    🗂  yazi                 — terminal file manager"
+fi
 if has_cmd zellij; then
     echo -e "    🪟 zellij               — terminal multiplexer"
 fi
