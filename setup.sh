@@ -1433,15 +1433,38 @@ if [[ "$SHELL_CHOICE" == "fish" ]]; then
 # Abbreviations (compatible with Fish 3.x and 4.x)
 if status is-interactive
     abbr -a ls "eza --icons --group-directories-first"
-    abbr -a ll "eza -la --icons --group-directories-first"
+    abbr -a la "eza -a --icons --group-directories-first"
+    abbr -a l "eza -lg --icons --group-directories-first"
+    abbr -a ll "eza -lga --icons --group-directories-first"
     abbr -a lt "eza --tree --icons --level=2"
-    abbr -a cat "bat"
     abbr -a find "fd"
     abbr -a grep "rg"
     abbr -a top "btop"
     abbr -a lg "lazygit"
     abbr -a cd "z"
     abbr -a y "yazi"
+    abbr -a sr "sudo -i"
+    abbr -a dus "du -d 1 -h | sort -hr"
+
+    # Docker
+    abbr -a dk "sudo docker"
+    abbr -a dkp "sudo docker ps -a"
+    abbr -a dki "sudo docker images -a"
+    abbr -a dke "sudo docker exec -it"
+    abbr -a dks "sudo docker stats --no-stream"
+
+    # Git
+    abbr -a gs "git status"
+    abbr -a ga "git add -A"
+    abbr -a gc "git commit -m"
+    abbr -a gac "git add -A && git commit -m"
+    abbr -a gco "git checkout"
+    abbr -a gpl "git pull"
+    abbr -a gps "git push"
+    abbr -a gl "git log --color --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit"
+    abbr -a gb "git branch"
+    abbr -a gd "git diff"
+    abbr -a gr "git reset"
 end
 ABBREOF
         fi

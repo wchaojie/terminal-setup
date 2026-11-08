@@ -61,3 +61,46 @@ if not string match -q -- $PNPM_HOME $PATH
   set -gx PATH "$PNPM_HOME" $PATH
 end
 # pnpm end
+
+# ─── Aliases ─────────────────────────────────────────────────────────
+# System & modern coreutils
+alias ls='eza --icons --group-directories-first'
+alias la='eza -a --icons --group-directories-first'
+alias l='eza -lg --icons --group-directories-first'
+alias ll='eza -lga --icons --group-directories-first'
+alias lt='eza -a --tree --icons --level=2'
+alias find='fd'
+alias grep='rg'
+alias top='btop'
+alias lg='lazygit'
+alias y='yazi'
+alias sr='sudo -i'
+alias dus='du -d 1 -h | sort -hr'
+
+# 兼容 Debian/Ubuntu 命令名
+if command -q batcat
+    alias bat='batcat'
+end
+if command -q fdfind
+    alias fd='fdfind'
+end
+
+# Docker
+alias dk='sudo docker'
+alias dkp='sudo docker ps -a'
+alias dki='sudo docker images -a'
+alias dke='sudo docker exec -it'
+alias dks='sudo docker stats --no-stream'
+
+# Git
+alias gs="git status"
+alias ga="git add -A"
+alias gc="git commit -m"
+alias gac='git add -A && git commit -m'
+alias gco="git checkout"
+alias gpl="git pull"
+alias gps="git push"
+alias gl="git log --color --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit"
+alias gb="git branch"
+alias gd="git diff"
+alias gr="git reset"
