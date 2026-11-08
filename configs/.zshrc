@@ -16,9 +16,12 @@ elif [[ -d /home/linuxbrew/.linuxbrew ]]; then
 elif [[ -d "$HOME/.linuxbrew" ]]; then
     export PATH="$HOME/.linuxbrew/bin:$HOME/.linuxbrew/sbin:$PATH"
     BREW_PREFIX="$HOME/.linuxbrew"
-elif [[ -d /usr/local/Cellar ]]; then
+elif [[ -d /usr/local/Homebrew || -f /usr/local/bin/brew || -d /usr/local/Cellar ]]; then
     export PATH="/usr/local/bin:/usr/local/sbin:$PATH"
     BREW_PREFIX="/usr/local"
+elif (( $+commands[brew] )); then
+    BREW_PREFIX="${commands[brew]:h:h}"
+    export PATH="$BREW_PREFIX/bin:$BREW_PREFIX/sbin:$PATH"
 else
     BREW_PREFIX=""
 fi

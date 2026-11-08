@@ -5,7 +5,7 @@ end
 # Homebrew (auto-detect Apple Silicon vs Intel)
 if test -d /opt/homebrew
     fish_add_path /opt/homebrew/bin
-else if test -d /usr/local/Cellar
+else if test -d /usr/local/Homebrew -o -f /usr/local/bin/brew -o -d /usr/local/Cellar
     fish_add_path /usr/local/bin
 end
 

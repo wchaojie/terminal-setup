@@ -152,14 +152,21 @@ OPT_TOOLS_LABELS=(
     "🟢  fnm + Node  — 极速 Node.js 多版本管理与 LTS 运行时"
 )
 
-declare -A OPT_ENABLED
+# 设置选装工具启用状态
+set_opt_enabled() {
+    local tool="${1//[^a-zA-Z0-9_]/_}"
+    local val="${2:-1}"
+    eval "OPT_ENABLED_${tool}=\"\$val\""
+}
 
 # 判断某个选装工具是否被用户勾选启用
 # 参数：$1 工具标识名称 (如 yazi, zellij)
 # 返回值：0 (已启用) 或 1 (未启用)
 is_opt_enabled() {
-    local tool="$1"
-    [[ "${OPT_ENABLED[$tool]:-0}" -eq 1 ]]
+    local tool="${1//[^a-zA-Z0-9_]/_}"
+    local val=0
+    eval "val=\"\${OPT_ENABLED_${tool}:-0}\""
+    [[ "$val" -eq 1 ]]
 }
 
 # 交互式复选框组件：支持上下箭头移动、空格/数字键切换、a键全选全消、回车确认
@@ -175,13 +182,13 @@ prompt_checkbox_tools() {
     if [[ "$INSTALL_PROFILE" == "minimal" ]]; then
         info "Profile: ${BOLD}Minimal${NC} (仅安装核心现代底座，跳过所有选装组件)"
         for key in "${OPT_TOOLS_KEYS[@]}"; do
-            OPT_ENABLED["$key"]=0
+            set_opt_enabled "$key" 0
         done
         return 0
     elif [[ "$INSTALL_PROFILE" == "full" ]]; then
         info "Profile: ${BOLD}Full (Recommended)${NC} (启用全量选装组件)"
         for key in "${OPT_TOOLS_KEYS[@]}"; do
-            OPT_ENABLED["$key"]=1
+            set_opt_enabled "$key" 1
         done
         return 0
     fi
@@ -190,7 +197,7 @@ prompt_checkbox_tools() {
     if [[ ! -r /dev/tty || ! -w /dev/tty ]] 2>/dev/null; then
         info "检测到非交互终端环境 — 默认启用推荐全套组件"
         for key in "${OPT_TOOLS_KEYS[@]}"; do
-            OPT_ENABLED["$key"]=1
+            set_opt_enabled "$key" 1
         done
         return 0
     fi
@@ -252,7 +259,7 @@ prompt_checkbox_tools() {
         IFS= read -rsn1 key < /dev/tty || true
         if [[ "$key" == $'\x1b' ]]; then
             local rest=""
-            read -rsn2 -t 0.1 rest < /dev/tty || true
+            read -rsn2 -t 1 rest < /dev/tty || true
             if [[ -z "$rest" ]]; then
                 key="ESC"
             else
@@ -328,7 +335,7 @@ prompt_checkbox_tools() {
     echo ""
     for ((i=0; i<num_items; i++)); do
         local tool_name="${OPT_TOOLS_KEYS[i]}"
-        OPT_ENABLED["$tool_name"]=${selected[i]}
+        set_opt_enabled "$tool_name" "${selected[i]}"
     done
 
     local enabled_list=()
@@ -413,13 +420,26 @@ echo -e "${BOLD}═════════════════════�
 
 case "$OS" in
     macos)
+        # Auto-detect existing Homebrew prefix if not in PATH
+        if ! has_cmd brew; then
+            if [[ -x /opt/homebrew/bin/brew ]]; then
+                eval "$(/opt/homebrew/bin/brew shellenv)"
+            elif [[ -x /usr/local/bin/brew ]]; then
+                eval "$(/usr/local/bin/brew shellenv)"
+            fi
+        fi
+
         if ! has_cmd brew; then
             info "Installing Homebrew..."
             run_cmd /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
             # Auto-detect Homebrew prefix (Apple Silicon vs Intel)
-            if [[ -d /opt/homebrew ]]; then
+            if [[ -x /opt/homebrew/bin/brew ]]; then
                 eval "$(/opt/homebrew/bin/brew shellenv)"
-            elif [[ -d /usr/local/Homebrew ]]; then
+            elif [[ -x /usr/local/bin/brew ]]; then
+                eval "$(/usr/local/bin/brew shellenv)"
+            elif [[ -d /opt/homebrew ]]; then
+                eval "$(/opt/homebrew/bin/brew shellenv)"
+            elif [[ -d /usr/local/Homebrew || -f /usr/local/bin/brew ]]; then
                 eval "$(/usr/local/bin/brew shellenv)"
             fi
             success "Homebrew installed"
@@ -503,7 +523,6 @@ MESLO_FONTS=(
 )
 
 # Font source: bundled in repo (fonts/) — no download needed
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FONT_SRC_DIR="$SCRIPT_DIR/fonts"
 
 FONT_INSTALLED=true
@@ -552,22 +571,47 @@ install_shell_macos() {
             success "Fish already installed"
         fi
 
-        FISH_PATH="$(which fish 2>/dev/null || echo "/opt/homebrew/bin/fish")"
-        if ! grep -qxF "$FISH_PATH" /etc/shells 2>/dev/null; then
-            info "Adding Fish to /etc/shells (may need sudo)..."
-            if $DRY_RUN; then
-                echo -e "${YELLOW}[DRY-RUN]${NC} echo $FISH_PATH | sudo tee -a /etc/shells"
+        local FISH_PATH=""
+        if has_cmd fish; then
+            FISH_PATH="$(command -v fish)"
+        elif has_cmd brew; then
+            local brew_prefix
+            brew_prefix="$(brew --prefix)"
+            if [[ -x "$brew_prefix/bin/fish" ]] || $DRY_RUN; then
+                FISH_PATH="$brew_prefix/bin/fish"
+            fi
+        fi
+        if [[ -z "$FISH_PATH" ]]; then
+            if [[ -x /opt/homebrew/bin/fish ]]; then
+                FISH_PATH="/opt/homebrew/bin/fish"
+            elif [[ -x /usr/local/bin/fish ]]; then
+                FISH_PATH="/usr/local/bin/fish"
+            elif [[ -d /opt/homebrew || "$(uname -m)" == "arm64" ]]; then
+                FISH_PATH="/opt/homebrew/bin/fish"
             else
-                echo "$FISH_PATH" | sudo tee -a /etc/shells >/dev/null
+                FISH_PATH="/usr/local/bin/fish"
             fi
         fi
 
-        if [[ "$SHELL" != "$FISH_PATH" ]]; then
-            info "Setting Fish as default shell..."
-            run_cmd chsh -s "$FISH_PATH"
-            success "Default shell changed to Fish"
+        if ! $DRY_RUN && [[ ! -x "$FISH_PATH" ]]; then
+            warn "Fish binary not found or not executable ($FISH_PATH) — skipping default shell change"
         else
-            success "Fish is already the default shell"
+            if ! grep -qxF "$FISH_PATH" /etc/shells 2>/dev/null; then
+                info "Adding Fish ($FISH_PATH) to /etc/shells (may need sudo)..."
+                if $DRY_RUN; then
+                    echo -e "${YELLOW}[DRY-RUN]${NC} echo $FISH_PATH | sudo tee -a /etc/shells"
+                else
+                    echo "$FISH_PATH" | sudo tee -a /etc/shells >/dev/null
+                fi
+            fi
+
+            if [[ "$SHELL" != "$FISH_PATH" ]]; then
+                info "Setting Fish as default shell..."
+                run_cmd chsh -s "$FISH_PATH"
+                success "Default shell changed to Fish"
+            else
+                success "Fish is already the default shell"
+            fi
         fi
     else
         # Zsh is pre-installed on macOS, just install the plugins
@@ -582,13 +626,42 @@ install_shell_macos() {
             fi
         done
 
-        ZSH_PATH="$(which zsh)"
-        if [[ "$SHELL" != "$ZSH_PATH" ]]; then
-            info "Setting Zsh as default shell..."
-            run_cmd chsh -s "$ZSH_PATH"
-            success "Default shell changed to Zsh"
+        local ZSH_PATH=""
+        if has_cmd zsh; then
+            ZSH_PATH="$(command -v zsh)"
+        elif [[ -x /bin/zsh ]]; then
+            ZSH_PATH="/bin/zsh"
+        elif has_cmd brew; then
+            local brew_prefix
+            brew_prefix="$(brew --prefix)"
+            if [[ -x "$brew_prefix/bin/zsh" ]] || $DRY_RUN; then
+                ZSH_PATH="$brew_prefix/bin/zsh"
+            fi
+        fi
+
+        if [[ -z "$ZSH_PATH" ]]; then
+            ZSH_PATH="/bin/zsh"
+        fi
+
+        if ! $DRY_RUN && [[ ! -x "$ZSH_PATH" ]]; then
+            warn "Zsh binary not found or not executable ($ZSH_PATH) — skipping default shell change"
         else
-            success "Zsh is already the default shell"
+            if ! grep -qxF "$ZSH_PATH" /etc/shells 2>/dev/null; then
+                info "Adding Zsh ($ZSH_PATH) to /etc/shells (may need sudo)..."
+                if $DRY_RUN; then
+                    echo -e "${YELLOW}[DRY-RUN]${NC} echo $ZSH_PATH | sudo tee -a /etc/shells"
+                else
+                    echo "$ZSH_PATH" | sudo tee -a /etc/shells >/dev/null
+                fi
+            fi
+
+            if [[ "$SHELL" != "$ZSH_PATH" ]]; then
+                info "Setting Zsh as default shell..."
+                run_cmd chsh -s "$ZSH_PATH"
+                success "Default shell changed to Zsh"
+            else
+                success "Zsh is already the default shell"
+            fi
         fi
     fi
 }
@@ -609,7 +682,7 @@ install_shell_linux() {
             success "Fish already installed"
         fi
 
-        FISH_PATH="$(which fish 2>/dev/null || echo "/usr/bin/fish")"
+        FISH_PATH="$(command -v fish 2>/dev/null || echo "/usr/bin/fish")"
         if ! grep -qxF "$FISH_PATH" /etc/shells 2>/dev/null; then
             info "Adding Fish to /etc/shells..."
             if $DRY_RUN; then
@@ -667,7 +740,15 @@ install_shell_linux() {
             success "zsh-syntax-highlighting installed"
         fi
 
-        ZSH_PATH="$(which zsh)"
+        ZSH_PATH="$(command -v zsh 2>/dev/null || echo "/usr/bin/zsh")"
+        if ! grep -qxF "$ZSH_PATH" /etc/shells 2>/dev/null; then
+            info "Adding Zsh to /etc/shells..."
+            if $DRY_RUN; then
+                echo -e "${YELLOW}[DRY-RUN]${NC} echo $ZSH_PATH | sudo tee -a /etc/shells"
+            else
+                echo "$ZSH_PATH" | sudo tee -a /etc/shells >/dev/null
+            fi
+        fi
         if [[ "$SHELL" != "$ZSH_PATH" ]]; then
             info "Setting Zsh as default shell..."
             run_cmd chsh -s "$ZSH_PATH"
@@ -1243,12 +1324,15 @@ deploy_ghostty_config() {
     esac
 
     mkdir -p "$ghostty_config_dir"
-    if [[ -f "$ghostty_config_dir/config" ]] || [[ -f "$ghostty_config_dir/config.ghostty" ]]; then
-        local existing
-        existing="$(ls "$ghostty_config_dir"/config* 2>/dev/null | head -1)"
-        run_cmd cp "$existing" "${existing}.bak.$(date +%s)"
-        warn "Backed up existing Ghostty config"
-    fi
+    local timestamp
+    timestamp="$(date +%s)"
+    local old_cfg
+    for old_cfg in "$ghostty_config_dir/config" "$ghostty_config_dir/config.ghostty"; do
+        if [[ -f "$old_cfg" || -L "$old_cfg" ]]; then
+            run_cmd mv "$old_cfg" "${old_cfg}.bak.${timestamp}"
+            warn "Backed up existing Ghostty config: $(basename "$old_cfg") -> $(basename "$old_cfg").bak.${timestamp}"
+        fi
+    done
 
     # macOS uses config.ghostty, Linux uses config
     case "$OS" in
