@@ -1359,6 +1359,10 @@ case "$OS" in
         info "Applying Starship catppuccin-powerline preset for macOS..."
         if has_cmd starship || $DRY_RUN; then
             run_cmd starship preset catppuccin-powerline -o "$HOME/.config/starship.toml"
+            # 开启换行提示符 (disabled = false)，避免长路径挤占命令行输入区域
+            if [[ -f "$HOME/.config/starship.toml" ]]; then
+                run_cmd sed -i '' 's/disabled = true/disabled = false/' "$HOME/.config/starship.toml"
+            fi
         else
             run_cmd cp "$CONFIGS_DIR/starship.toml" "$HOME/.config/starship.toml"
         fi
