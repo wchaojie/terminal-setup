@@ -160,6 +160,12 @@ elif command -v fdfind &>/dev/null; then
     export FZF_ALT_C_COMMAND='fdfind --type d --hidden --follow --exclude .git'
 fi
 
+# ─── Atuin (shell history sync) ──────────────────────────────────────
+# 初始化 Atuin 历史管理，--disable-up-arrow 保留原有的 ↑/↓ 智能前缀搜索，Ctrl+R 唤起 Atuin 历史看板
+if command -v atuin &>/dev/null; then
+    eval "$(atuin init zsh --disable-up-arrow)"
+fi
+
 # ─── Zoxide (smart cd) ──────────────────────────────────────────────
 if command -v zoxide &>/dev/null; then
     eval "$(zoxide init zsh)"
@@ -182,6 +188,19 @@ function set-ssh-key() {
     ssh-add -D 2>/dev/null
     ssh-add "$key"
     echo "Active SSH key: $1"
+}
+
+# ─── rgf: 交互式代码内容搜索 ──────────────────────────────────────────────
+# 用途：结合 ripgrep 与 fzf，交互式筛选包含关键字的文件，并在右侧高亮预览匹配代码上下文
+# 参数：$* 待检索的内容关键字或正则表达式
+# 异常：未传入参数时输出使用帮助并返回非零状态码
+rgf() {
+    local pattern="${*:-}"
+    if [[ -z "$pattern" ]]; then
+        echo "用法: rgf <搜索关键字>" >&2
+        return 1
+    fi
+    rg -l "$pattern" | fzf --preview "rg -n --color=always -C 3 \"$pattern\" {}"
 }
 
 # ─── Aliases ─────────────────────────────────────────────────────────

@@ -1,0 +1,14 @@
+# Yazi 布局与显示配置
+# 官方文档: https://yazi-rs.github.io/docs/configuration/yazi
+
+#:schema https://yazi-rs.github.io/schemas/yazi.json
+
+[mgr]
+# 三栏宽度比例: [父目录, 当前目录, 预览区域]
+# 官方默认值为 [ 1, 4, 3 ]。
+# 将第 2 列当前目录调小，第 3 列预览区域大幅拓宽至 62.5%：
+ratio = [ 1, 2, 5 ]
+
+# 兼容旧版本 Yazi 配置节名
+[manager]
+ratio = [ 1, 2, 5 ]

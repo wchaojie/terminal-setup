@@ -2,7 +2,7 @@
 
 一键配置终端环境，支持 **macOS**、**Debian/Ubuntu** 和 **Windows (WSL)**。新机器跑一个脚本，几分钟搞定完整终端。
 
-**🇬🇧 [English Version](README.md)**
+**🇬🇧 [English Version](README.md) | 📖 [命令速查手册 (Cheatsheet)](CHEATSHEET.md)**
 
 <p align="center">
   <img src="assets/ghostty.png" width="80" alt="Ghostty">
@@ -62,10 +62,11 @@ cd terminal-setup && ./setup.sh
 ### 选项
 
 ```bash
-./setup.sh --fish       # Fish shell
-./setup.sh --zsh        # Zsh + 类 Fish 插件
+./setup.sh --fish       # 使用 Fish shell
+./setup.sh --zsh        # 使用 Zsh + 类 Fish 插件
+./setup.sh --full       # 全量安装所有工具（跳过交互复选框）
+./setup.sh --minimal    # 仅安装核心现代底座（bat, eza, fd, rg, fzf, zoxide, jq, tldr, delta）
 ./setup.sh --dry-run    # 预览会做什么（不做任何改动）
-```
 
 一行命令（自动 clone）：
 
@@ -90,7 +91,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/lewislulu/terminal-setup/mai
 |------|------|
 | **[Ghostty](https://ghostty.org)** | GPU 加速终端模拟器 |
 | **Fish** 或 **Zsh** | Shell（你选） |
-| **[Starship](https://starship.rs)** | 跨 Shell 提示符（Gruvbox Rainbow 预设） |
+| **[Starship](https://starship.rs)** | 跨 Shell 提示符（macOS: Catppuccin Powerline / Linux: Gruvbox Rainbow） |
 | **MesloLGS NF** | Nerd Font，提供图标和 Powerline 字形 |
 | **[bat](https://github.com/sharkdp/bat)** | 带语法高亮和行号的 `cat` |
 | **[eza](https://github.com/eza-community/eza)** | 带图标、git 状态、树形视图的 `ls` |
@@ -100,10 +101,14 @@ bash <(curl -fsSL https://raw.githubusercontent.com/lewislulu/terminal-setup/mai
 | **[btop](https://github.com/aristocratos/btop)** | 漂亮的系统监控 |
 | **[zoxide](https://github.com/ajeetdsouza/zoxide)** | 智能 `cd`，学习你的习惯 |
 | **[jq](https://github.com/jqlang/jq)** | JSON 处理器 |
+| **[jd](https://github.com/josephburnett/jd)** | JSON 与 YAML 语义差异对比与补丁工具 |
 | **[tldr](https://github.com/tldr-pages/tldr)** | 简化版 man 手册，附带示例 |
 | **[delta](https://github.com/dandavison/delta)** | 带语法高亮的 git diff |
 | **[lazygit](https://github.com/jesseduffield/lazygit)** | Git 终端 UI |
 | **[yazi](https://github.com/sxyazi/yazi)** | 极速现代终端文件管理器 |
+| **[fastfetch](https://github.com/fastfetch-cli/fastfetch)** | 现代化极速系统信息展示（默认 examples/25 预设） |
+| **[chezmoi](https://www.chezmoi.io)** | 跨平台 Dotfiles 安全管理工具 |
+| **[atuin](https://atuin.sh)** | 跨设备端到端加密 Shell 历史同步与搜索 |
 | **[fnm](https://github.com/Schniz/fnm)** | 快速 Node 版本管理器（Rust 编写） |
 | **[Zellij](https://zellij.dev)** | 现代终端复用器（可选） |
 
@@ -114,7 +119,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/lewislulu/terminal-setup/mai
 3. 下载 **MesloLGS NF** Nerd 字体
 4. 安装你选择的 **Shell** + 插件
 5. 安装所有 **CLI 工具**（macOS 用 Homebrew，Linux 用 apt + GitHub releases）
-6. 安装 **Starship** 提示符 + Gruvbox Rainbow 预设配置
+6. 安装 **Starship** 提示符预设（macOS 部署 Catppuccin Powerline，Linux 部署 Gruvbox Rainbow）
 7. 安装 **fnm** + **Node.js** LTS（可选）
 8. 安装 **Zellij** 终端复用器（可选）
 9. 部署所有配置文件（已有配置会加时间戳备份）

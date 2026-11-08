@@ -2,7 +2,7 @@
 
 One-script terminal environment setup for **macOS**, **Debian/Ubuntu**, and **Windows (WSL)**. Run on a fresh machine, get a fully configured terminal in minutes.
 
-**🇨🇳 [中文版文档](README_CN.md)**
+**🇨🇳 [中文版文档](README_CN.md) | 📖 [CLI Cheatsheet](CHEATSHEET.md)**
 
 <p align="center">
   <img src="assets/ghostty.png" width="80" alt="Ghostty">
@@ -64,8 +64,9 @@ cd terminal-setup && ./setup.sh
 ```bash
 ./setup.sh --fish       # Fish shell
 ./setup.sh --zsh        # Zsh + fish-like plugins
+./setup.sh --full       # Install all tools (skip interactive checkbox)
+./setup.sh --minimal    # Install core tools only (bat, eza, fd, rg, fzf, zoxide, jq, tldr, delta)
 ./setup.sh --dry-run    # Preview what would be done (no changes)
-```
 
 One-liner (auto-clones):
 
@@ -90,7 +91,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/lewislulu/terminal-setup/mai
 |-----------|------|
 | **[Ghostty](https://ghostty.org)** | GPU-accelerated terminal emulator |
 | **Fish** or **Zsh** | Shell (your choice) |
-| **[Starship](https://starship.rs)** | Cross-shell prompt (Gruvbox Rainbow preset) |
+| **[Starship](https://starship.rs)** | Cross-shell prompt (macOS: Catppuccin Powerline / Linux: Gruvbox Rainbow) |
 | **MesloLGS NF** | Nerd Font for icons & powerline glyphs |
 | **[bat](https://github.com/sharkdp/bat)** | `cat` with syntax highlighting & line numbers |
 | **[eza](https://github.com/eza-community/eza)** | `ls` with icons, git status, tree view |
@@ -100,10 +101,14 @@ bash <(curl -fsSL https://raw.githubusercontent.com/lewislulu/terminal-setup/mai
 | **[btop](https://github.com/aristocratos/btop)** | Beautiful system monitor |
 | **[zoxide](https://github.com/ajeetdsouza/zoxide)** | Smart `cd` that learns your habits |
 | **[jq](https://github.com/jqlang/jq)** | JSON processor |
+| **[jd](https://github.com/josephburnett/jd)** | JSON and YAML diff & patch tool |
 | **[tldr](https://github.com/tldr-pages/tldr)** | Simplified man pages with examples |
 | **[delta](https://github.com/dandavison/delta)** | Beautiful git diffs with syntax highlighting |
 | **[lazygit](https://github.com/jesseduffield/lazygit)** | Git TUI |
 | **[yazi](https://github.com/sxyazi/yazi)** | Blazing fast terminal file manager |
+| **[fastfetch](https://github.com/fastfetch-cli/fastfetch)** | Neofetch alternative (examples/25 preset) |
+| **[chezmoi](https://www.chezmoi.io)** | Secure dotfiles manager across machines |
+| **[atuin](https://atuin.sh)** | Magical shell history sync & search |
 | **[fnm](https://github.com/Schniz/fnm)** | Fast Node Manager (Rust) |
 | **[Zellij](https://zellij.dev)** | Modern terminal multiplexer (optional) |
 
@@ -114,7 +119,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/lewislulu/terminal-setup/mai
 3. Downloads **MesloLGS NF** nerd fonts
 4. Installs your **shell** of choice + plugins
 5. Installs all **CLI tools** (Homebrew on macOS, apt + GitHub releases on Linux)
-6. Installs **Starship** prompt with Gruvbox Rainbow preset
+6. Installs **Starship** prompt with platform preset (Catppuccin Powerline on macOS, Gruvbox Rainbow on Linux)
 7. Installs **fnm** + **Node.js** LTS (optional)
 8. Installs **Zellij** terminal multiplexer (optional)
 9. Deploys all config files (existing configs are backed up with timestamps)

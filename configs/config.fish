@@ -19,6 +19,11 @@ if command -q fnm
     fnm env --use-on-cd --shell fish | source
 end
 
+# Atuin (shell history sync) — only if installed
+if command -q atuin
+    atuin init fish --disable-up-arrow | source
+end
+
 # SSH key switcher (fallback for multi-account setups)
 # Usage: set-ssh-key lewis-official-20260224
 # Prefer ~/.ssh/config Host aliases for automatic matching.
@@ -35,6 +40,19 @@ function set-ssh-key
     ssh-add -D 2>/dev/null
     ssh-add "$key"
     echo "Active SSH key: $argv[1]"
+end
+
+# rgf: 交互式代码内容搜索
+# 用途：结合 ripgrep 与 fzf，交互式筛选包含关键字的文件，并在右侧高亮预览匹配代码上下文
+# 参数：$argv 待检索的内容关键字或正则表达式
+# 异常：未传入参数时输出使用帮助并返回非零状态码
+function rgf -d "Search file contents with ripgrep and preview with fzf"
+    if test (count $argv) -eq 0
+        echo "用法: rgf <搜索关键字>" >&2
+        return 1
+    end
+    set -l pattern "$argv"
+    rg -l "$pattern" | fzf --preview "rg -n --color=always -C 3 \"$pattern\" {}"
 end
 
 # pnpm

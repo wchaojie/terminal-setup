@@ -5,9 +5,9 @@
 # Platforms: macOS, Debian/Ubuntu, Windows (via WSL)
 #
 # Stack: Ghostty + (Fish or Zsh) + Starship + Nerd Font (MesloLGS)
-# Tools: bat, eza, fd, ripgrep, btop, zoxide, jq, tldr, delta, lazygit, fzf, yazi
+# Tools: bat, eza, fd, ripgrep, btop, zoxide, jq, jd, tldr, delta, lazygit, fzf, yazi, fastfetch, chezmoi, atuin
 # Node:  fnm (Fast Node Manager) — works with both Fish and Zsh
-# Theme: Gruvbox Rainbow (Starship)
+# Theme: Catppuccin Powerline (macOS) / Gruvbox Rainbow (Linux)
 #
 # Usage:
 #   ./setup.sh              # interactive shell choice
@@ -43,13 +43,22 @@ run_cmd() {
     fi
 }
 
+# 检查命令是否在系统中已存在
+has_cmd() {
+    command -v "$1" &>/dev/null
+}
+
 # ─── Parse Arguments ────────────────────────────────────────────────
 SHELL_CHOICE=""
+INSTALL_PROFILE=""
 for arg in "$@"; do
     case "$arg" in
-        --fish)    SHELL_CHOICE="fish" ;;
-        --zsh)     SHELL_CHOICE="zsh" ;;
-        --dry-run) DRY_RUN=true ;;
+        --fish)            SHELL_CHOICE="fish" ;;
+        --zsh)             SHELL_CHOICE="zsh" ;;
+        --dry-run)         DRY_RUN=true ;;
+        --full|--all)      INSTALL_PROFILE="full" ;;
+        --minimal|--core)  INSTALL_PROFILE="minimal" ;;
+        --custom)          INSTALL_PROFILE="custom" ;;
     esac
 done
 
@@ -129,6 +138,214 @@ fi
 echo ""
 info "Setting up with ${BOLD}${SHELL_CHOICE}${NC} on ${BOLD}${OS}${NC}"
 
+# ─── 选装增强工具定义 ───────────────────────────────────────────────────
+OPT_TOOLS_KEYS=("yazi" "fastfetch" "lazygit" "btop" "atuin" "chezmoi" "jd" "zellij" "fnm")
+OPT_TOOLS_LABELS=(
+    "🗂   yazi        — 极速终端文件管理器 (带图片/代码预览)"
+    "💻  fastfetch   — 现代化极速系统硬件看板 (examples/25 样式)"
+    "🔀  lazygit     — 全键盘 Git 终端 TUI 可视化控制台"
+    "📊  btop        — 实时 CPU/内存/磁盘/网络监控仪表盘"
+    "📜  atuin       — 魔法命令历史看板与跨设备加密同步"
+    "🏠  chezmoi     — 跨机器个人 Dotfiles 配置版本管理"
+    "📑  jd          — JSON 与 YAML 结构语义差异比对"
+    "🪟  zellij      — 类似 tmux 的终端多路复用与分屏器"
+    "🟢  fnm + Node  — 极速 Node.js 多版本管理与 LTS 运行时"
+)
+
+declare -A OPT_ENABLED
+
+# 判断某个选装工具是否被用户勾选启用
+# 参数：$1 工具标识名称 (如 yazi, zellij)
+# 返回值：0 (已启用) 或 1 (未启用)
+is_opt_enabled() {
+    local tool="$1"
+    [[ "${OPT_ENABLED[$tool]:-0}" -eq 1 ]]
+}
+
+# 交互式复选框组件：支持上下箭头移动、空格/数字键切换、a键全选全消、回车确认
+# 若检测到非 TTY 环境或命令行传参 (--minimal/--full)，则自动采用对应配置并跳过交互
+prompt_checkbox_tools() {
+    local num_items=${#OPT_TOOLS_KEYS[@]}
+    local selected=()
+    for ((i=0; i<num_items; i++)); do
+        selected[i]=1
+    done
+
+    # 1. 命令行参数快速模式
+    if [[ "$INSTALL_PROFILE" == "minimal" ]]; then
+        info "Profile: ${BOLD}Minimal${NC} (仅安装核心现代底座，跳过所有选装组件)"
+        for key in "${OPT_TOOLS_KEYS[@]}"; do
+            OPT_ENABLED["$key"]=0
+        done
+        return 0
+    elif [[ "$INSTALL_PROFILE" == "full" ]]; then
+        info "Profile: ${BOLD}Full (Recommended)${NC} (启用全量选装组件)"
+        for key in "${OPT_TOOLS_KEYS[@]}"; do
+            OPT_ENABLED["$key"]=1
+        done
+        return 0
+    fi
+
+    # 2. 非交互终端自动回退机制 (如无 /dev/tty 或管道执行)
+    if [[ ! -r /dev/tty || ! -w /dev/tty ]] 2>/dev/null; then
+        info "检测到非交互终端环境 — 默认启用推荐全套组件"
+        for key in "${OPT_TOOLS_KEYS[@]}"; do
+            OPT_ENABLED["$key"]=1
+        done
+        return 0
+    fi
+
+    local cur_idx=0
+    # 捕获异常退出信号，确保终端光标始终能恢复显示
+    trap 'tput cnorm < /dev/tty 2>/dev/null; echo ""; exit 1' INT TERM
+
+    echo ""
+    echo -e "${BOLD}══════════════════════════════════════════${NC}"
+    echo -e "${BOLD}  🛠  Select Optional Tools (多选复选框)${NC}"
+    echo -e "${BOLD}══════════════════════════════════════════${NC}"
+    echo -e "  ${YELLOW}操作指南:${NC} [↑/↓ 或 j/k] 移动光标   [空格/数字1-9] 切换勾选   [a] 全选/全消   [Enter] 确认   [ESC/q] 取消退出"
+    echo ""
+    echo -e "  核心基础工具 (${GREEN}bat, eza, fd, rg, fzf, zoxide, jq, tldr, delta, file${NC}) 将默认安装。"
+    echo -e "  请按需勾选需要启用的增强工具："
+    echo ""
+
+    tput civis < /dev/tty 2>/dev/null || true
+
+    # 临时关闭 errexit，确保按键交互过程中的任何非零返回（如超时、算术零）绝不中断脚本
+    set +e
+
+    local first_render=true
+    while true; do
+        if ! $first_render; then
+            echo -en "\033[${num_items}A" > /dev/tty
+        fi
+        first_render=false
+
+        for ((i=0; i<num_items; i++)); do
+            echo -en "\033[2K\r" > /dev/tty
+            local prefix="   "
+            if [[ $i -eq $cur_idx ]]; then
+                prefix=" ${BOLD}${GREEN}❯${NC} "
+            fi
+
+            local checkbox="[ ]"
+            if [[ ${selected[i]} -eq 1 ]]; then
+                checkbox="[${GREEN}✔${NC}]"
+            fi
+
+            local item_key="${OPT_TOOLS_KEYS[i]}"
+            local item_tag=""
+            if has_cmd "$item_key"; then
+                item_tag=" ${GREEN}[已安装]${NC}"
+            else
+                item_tag=" ${RED}[未安装]${NC}"
+            fi
+
+            if [[ $i -eq $cur_idx ]]; then
+                echo -e "${prefix}${checkbox} ${BOLD}${OPT_TOOLS_LABELS[i]}${NC}${item_tag}" > /dev/tty
+            else
+                echo -e "${prefix}${checkbox} ${OPT_TOOLS_LABELS[i]}${item_tag}" > /dev/tty
+            fi
+        done
+
+        local key=""
+        IFS= read -rsn1 key < /dev/tty || true
+        if [[ "$key" == $'\x1b' ]]; then
+            local rest=""
+            read -rsn2 -t 0.1 rest < /dev/tty || true
+            if [[ -z "$rest" ]]; then
+                key="ESC"
+            else
+                key+="$rest"
+            fi
+        fi
+
+        case "$key" in
+            $'\x1b[A'|$'\x1bOA'|k|K) # 向上移动 (支持 ↑ 键与 k 键)
+                cur_idx=$((cur_idx - 1))
+                if [[ $cur_idx -lt 0 ]]; then
+                    cur_idx=$((num_items - 1))
+                fi
+                ;;
+            $'\x1b[B'|$'\x1bOB'|j|J) # 向下移动 (支持 ↓ 键与 j 键)
+                cur_idx=$((cur_idx + 1))
+                if [[ $cur_idx -ge $num_items ]]; then
+                    cur_idx=0
+                fi
+                ;;
+            " ") # 空格键切换选中
+                if [[ ${selected[cur_idx]} -eq 1 ]]; then
+                    selected[cur_idx]=0
+                else
+                    selected[cur_idx]=1
+                fi
+                ;;
+            [1-9]) # 数字快捷键直接切换对应项
+                local n_idx=$((key - 1))
+                if [[ $n_idx -ge 0 && $n_idx -lt $num_items ]]; then
+                    if [[ ${selected[n_idx]} -eq 1 ]]; then
+                        selected[n_idx]=0
+                    else
+                        selected[n_idx]=1
+                    fi
+                fi
+                ;;
+            a|A) # 一键全选/全消
+                local all_on=true
+                for ((i=0; i<num_items; i++)); do
+                    if [[ ${selected[i]} -eq 0 ]]; then
+                        all_on=false
+                        break
+                    fi
+                done
+                local new_val=1
+                if $all_on; then
+                    new_val=0
+                fi
+                for ((i=0; i<num_items; i++)); do
+                    selected[i]=$new_val
+                done
+                ;;
+            "") # 回车确认提交
+                break
+                ;;
+            ESC|q|Q) # 按 ESC 键或 q 键安全取消退出
+                tput cnorm < /dev/tty 2>/dev/null || true
+                trap - INT TERM
+                set -e
+                echo "" > /dev/tty
+                info "用户按下 ESC 键取消操作，脚本已安全退出。"
+                exit 0
+                ;;
+        esac
+    done
+
+    # 恢复严格模式与光标显示
+    set -e
+    tput cnorm < /dev/tty 2>/dev/null || true
+    trap - INT TERM
+
+    echo ""
+    for ((i=0; i<num_items; i++)); do
+        local tool_name="${OPT_TOOLS_KEYS[i]}"
+        OPT_ENABLED["$tool_name"]=${selected[i]}
+    done
+
+    local enabled_list=()
+    for ((i=0; i<num_items; i++)); do
+        if [[ ${selected[i]} -eq 1 ]]; then
+            enabled_list+=("${OPT_TOOLS_KEYS[i]}")
+        fi
+    done
+    if [[ ${#enabled_list[@]} -eq 0 ]]; then
+        info "已选择 ${BOLD}Minimal 核心模式${NC}（跳过选装组件）"
+    else
+        info "已选定组件: ${GREEN}${enabled_list[*]}${NC}"
+    fi
+}
+
+prompt_checkbox_tools
+
 # ─── Config Directory ───────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIGS_DIR="$SCRIPT_DIR/configs"
@@ -186,10 +403,7 @@ cask_install() {
     success "$cask installed"
 }
 
-# Check if a command exists
-has_cmd() {
-    command -v "$1" &>/dev/null
-}
+
 
 # ─── Step 1: Package Manager ────────────────────────────────────────
 echo ""
@@ -476,7 +690,14 @@ echo -e "${BOLD}  🛠  Step 5/9: CLI Tools${NC}"
 echo -e "${BOLD}══════════════════════════════════════════${NC}"
 
 install_cli_tools_macos() {
-    local TOOLS=(bat eza fd ripgrep btop zoxide jq tldr git-delta lazygit fzf yazi)
+    local TOOLS=(bat eza fd ripgrep zoxide jq tldr git-delta fzf)
+    is_opt_enabled btop && TOOLS+=(btop)
+    is_opt_enabled lazygit && TOOLS+=(lazygit)
+    is_opt_enabled yazi && TOOLS+=(yazi)
+    is_opt_enabled fastfetch && TOOLS+=(fastfetch)
+    is_opt_enabled jd && TOOLS+=(jd)
+    is_opt_enabled chezmoi && TOOLS+=(chezmoi)
+    is_opt_enabled atuin && TOOLS+=(atuin)
     for tool in "${TOOLS[@]}"; do
         if brew list "$tool" &>/dev/null; then
             success "$tool already installed"
@@ -502,20 +723,24 @@ install_cli_tools_linux() {
         fi
     done
 
-    # btop — not in apt on older Debian/Ubuntu, use snap as fallback
-    if has_cmd btop; then
-        success "btop already installed"
-    else
-        info "Installing btop..."
-        if run_cmd sudo apt-get install -y btop 2>/dev/null; then
-            success "btop installed via apt"
-        elif has_cmd snap; then
-            info "btop not in apt, trying snap..."
-            run_cmd sudo snap install btop
-            success "btop installed via snap"
+    # btop — 实时系统监控（选装）
+    if is_opt_enabled btop; then
+        if has_cmd btop; then
+            success "btop already installed"
         else
-            warn "btop not available via apt or snap — skipping (install manually: https://github.com/aristocratos/btop)"
+            info "Installing btop..."
+            if run_cmd sudo apt-get install -y btop 2>/dev/null; then
+                success "btop installed via apt"
+            elif has_cmd snap; then
+                info "btop not in apt, trying snap..."
+                run_cmd sudo snap install btop
+                success "btop installed via snap"
+            else
+                warn "btop not available via apt or snap — skipping (install manually: https://github.com/aristocratos/btop)"
+            fi
         fi
+    else
+        info "Skipping btop (not selected)"
     fi
 
     # zoxide — not in apt on older Debian/Ubuntu, use bundled installer as fallback
@@ -598,65 +823,233 @@ install_cli_tools_linux() {
         fi
     fi
 
-    # lazygit — try apt first, then bundled binary
-    if has_cmd lazygit; then
-        success "lazygit already installed"
-    else
-        info "Installing lazygit..."
-        if run_cmd sudo apt-get install -y lazygit 2>/dev/null; then
-            success "lazygit installed via apt"
+    # lazygit — 全键盘 Git 终端 TUI 控制台（选装）
+    if is_opt_enabled lazygit; then
+        if has_cmd lazygit; then
+            success "lazygit already installed"
         else
-            install_bundled_bin lazygit || warn "Could not install lazygit — skipping"
+            info "Installing lazygit..."
+            if run_cmd sudo apt-get install -y lazygit 2>/dev/null; then
+                success "lazygit installed via apt"
+            else
+                install_bundled_bin lazygit || warn "Could not install lazygit — skipping"
+            fi
         fi
-    fi
-
-    # yazi 需要系统内置的 file 命令来探测文件 MIME 类型（例如检测文本、图片、音视频等）
-    if ! has_cmd file; then
-        info "Installing file (required by yazi for MIME type detection)..."
-        pkg_install "file"
-    fi
-
-    # yazi — 终端文件管理器，优先通过 apt 安装，其次使用预置二进制，最后回退至从 GitHub Releases 下载安装
-    if has_cmd yazi; then
-        success "yazi already installed"
     else
-        info "Installing yazi..."
-        if apt-cache show yazi &>/dev/null 2>&1 && run_cmd sudo apt-get install -y yazi; then
-            success "yazi installed via apt"
-        elif install_bundled_bin yazi; then
-            :
+        info "Skipping lazygit (not selected)"
+    fi
+
+    # yazi — 终端极速文件管理器（选装）
+    if is_opt_enabled yazi; then
+        # yazi 需要系统内置的 file 命令来探测文件 MIME 类型（例如检测文本、图片、音视频等）
+        if ! has_cmd file; then
+            info "Installing file (required by yazi for MIME type detection)..."
+            pkg_install "file"
+        fi
+
+        if has_cmd yazi; then
+            success "yazi already installed"
         else
-            info "Downloading yazi from GitHub releases..."
-            local yazi_arch
-            case "$(uname -m)" in
-                x86_64)  yazi_arch="x86_64" ;;
-                aarch64) yazi_arch="aarch64" ;;
-                *) warn "Unsupported arch for yazi: $(uname -m)"; yazi_arch="" ;;
-            esac
-            if [[ -n "$yazi_arch" ]]; then
-                local yazi_url="https://github.com/sxyazi/yazi/releases/latest/download/yazi-${yazi_arch}-unknown-linux-musl.zip"
-                local yazi_tmp
-                yazi_tmp="$(mktemp -d)"
-                if $DRY_RUN; then
-                    echo -e "${YELLOW}[DRY-RUN]${NC} curl -fsSL $yazi_url -o $yazi_tmp/yazi.zip && unzip -q $yazi_tmp/yazi.zip -d $yazi_tmp && sudo cp $yazi_tmp/yazi-*/yazi $yazi_tmp/yazi-*/ya /usr/local/bin/"
-                else
-                    if curl -fsSL "$yazi_url" -o "$yazi_tmp/yazi.zip" \
-                        && unzip -q "$yazi_tmp/yazi.zip" -d "$yazi_tmp" \
-                        && sudo cp "$yazi_tmp"/yazi-*/yazi /usr/local/bin/yazi \
-                        && sudo chmod +x /usr/local/bin/yazi; then
-                        # 若归档中包含伴生工具 ya，一并安装
-                        if [[ -f "$yazi_tmp"/yazi-*/ya ]]; then
-                            sudo cp "$yazi_tmp"/yazi-*/ya /usr/local/bin/ya
-                            sudo chmod +x /usr/local/bin/ya
-                        fi
-                        success "yazi installed from GitHub releases"
+            info "Installing yazi..."
+            if apt-cache show yazi &>/dev/null 2>&1 && run_cmd sudo apt-get install -y yazi; then
+                success "yazi installed via apt"
+            elif install_bundled_bin yazi; then
+                :
+            else
+                info "Downloading yazi from GitHub releases..."
+                local yazi_arch
+                case "$(uname -m)" in
+                    x86_64)  yazi_arch="x86_64" ;;
+                    aarch64) yazi_arch="aarch64" ;;
+                    *) warn "Unsupported arch for yazi: $(uname -m)"; yazi_arch="" ;;
+                esac
+                if [[ -n "$yazi_arch" ]]; then
+                    local yazi_url="https://github.com/sxyazi/yazi/releases/latest/download/yazi-${yazi_arch}-unknown-linux-musl.zip"
+                    local yazi_tmp
+                    yazi_tmp="$(mktemp -d)"
+                    if $DRY_RUN; then
+                        echo -e "${YELLOW}[DRY-RUN]${NC} curl -fsSL $yazi_url -o $yazi_tmp/yazi.zip && unzip -q $yazi_tmp/yazi.zip -d $yazi_tmp && sudo cp $yazi_tmp/yazi-*/yazi $yazi_tmp/yazi-*/ya /usr/local/bin/"
                     else
-                        warn "Could not install yazi — skipping"
+                        if curl -fsSL "$yazi_url" -o "$yazi_tmp/yazi.zip" \
+                            && unzip -q "$yazi_tmp/yazi.zip" -d "$yazi_tmp" \
+                            && sudo cp "$yazi_tmp"/yazi-*/yazi /usr/local/bin/yazi \
+                            && sudo chmod +x /usr/local/bin/yazi; then
+                            # 若归档中包含伴生工具 ya，一并安装
+                            if [[ -f "$yazi_tmp"/yazi-*/ya ]]; then
+                                sudo cp "$yazi_tmp"/yazi-*/ya /usr/local/bin/ya
+                                sudo chmod +x /usr/local/bin/ya
+                            fi
+                            success "yazi installed from GitHub releases"
+                        else
+                            warn "Could not install yazi — skipping"
+                        fi
+                        rm -rf "$yazi_tmp"
                     fi
-                    rm -rf "$yazi_tmp"
                 fi
             fi
         fi
+    else
+        info "Skipping yazi (not selected)"
+    fi
+
+    # fastfetch — 现代化极速系统信息展示工具（选装）
+    if is_opt_enabled fastfetch; then
+        if has_cmd fastfetch; then
+            success "fastfetch already installed"
+        else
+            info "Installing fastfetch..."
+            if apt-cache show fastfetch &>/dev/null 2>&1 && run_cmd sudo apt-get install -y fastfetch; then
+                success "fastfetch installed via apt"
+            elif install_bundled_bin fastfetch; then
+                :
+            else
+                info "Downloading fastfetch from GitHub releases..."
+                local ff_arch
+                case "$(uname -m)" in
+                    x86_64)  ff_arch="amd64" ;;
+                    aarch64) ff_arch="aarch64" ;;
+                    *) warn "Unsupported arch for fastfetch: $(uname -m)"; ff_arch="" ;;
+                esac
+                if [[ -n "$ff_arch" ]]; then
+                    local ff_url="https://github.com/fastfetch-cli/fastfetch/releases/latest/download/fastfetch-linux-${ff_arch}.tar.gz"
+                    local ff_tmp
+                    ff_tmp="$(mktemp -d)"
+                    if $DRY_RUN; then
+                        echo -e "${YELLOW}[DRY-RUN]${NC} curl -fsSL $ff_url | tar xz -C $ff_tmp && sudo cp $ff_tmp/fastfetch-linux-${ff_arch}/usr/bin/fastfetch /usr/local/bin/"
+                    else
+                        if curl -fsSL "$ff_url" | tar xz -C "$ff_tmp" \
+                            && sudo cp "$ff_tmp"/fastfetch-linux-"${ff_arch}"/usr/bin/fastfetch /usr/local/bin/fastfetch \
+                            && sudo chmod +x /usr/local/bin/fastfetch; then
+                            success "fastfetch installed from GitHub releases"
+                        else
+                            warn "Could not install fastfetch — skipping"
+                        fi
+                        rm -rf "$ff_tmp"
+                    fi
+                fi
+            fi
+        fi
+    else
+        info "Skipping fastfetch (not selected)"
+    fi
+
+    # jd — JSON & YAML 语义差异对比与补丁工具（选装）
+    if is_opt_enabled jd; then
+        if has_cmd jd; then
+            success "jd already installed"
+        else
+            info "Installing jd (JSON diff & patch)..."
+            if install_bundled_bin jd; then
+                :
+            else
+                info "Downloading jd from GitHub releases..."
+                local jd_arch
+                case "$(uname -m)" in
+                    x86_64)  jd_arch="amd64" ;;
+                    aarch64) jd_arch="arm64" ;;
+                    *) warn "Unsupported arch for jd: $(uname -m)"; jd_arch="" ;;
+                esac
+                if [[ -n "$jd_arch" ]]; then
+                    local jd_url="https://github.com/josephburnett/jd/releases/latest/download/jd-${jd_arch}-linux"
+                    local jd_tmp
+                    jd_tmp="$(mktemp -d)"
+                    if $DRY_RUN; then
+                        echo -e "${YELLOW}[DRY-RUN]${NC} curl -fsSL $jd_url -o $jd_tmp/jd && sudo cp $jd_tmp/jd /usr/local/bin/jd && sudo chmod +x /usr/local/bin/jd"
+                    else
+                        if curl -fsSL "$jd_url" -o "$jd_tmp/jd" \
+                            && sudo cp "$jd_tmp/jd" /usr/local/bin/jd \
+                            && sudo chmod +x /usr/local/bin/jd; then
+                            success "jd installed from GitHub releases"
+                        else
+                            warn "Could not install jd — skipping"
+                        fi
+                        rm -rf "$jd_tmp"
+                    fi
+                fi
+            fi
+        fi
+    else
+        info "Skipping jd (not selected)"
+    fi
+
+    # chezmoi — 跨平台 Dotfiles 安全管理工具（选装）
+    if is_opt_enabled chezmoi; then
+        if has_cmd chezmoi; then
+            success "chezmoi already installed"
+        else
+            info "Installing chezmoi (dotfiles manager)..."
+            if install_bundled_bin chezmoi; then
+                :
+            else
+                info "Downloading chezmoi from GitHub releases..."
+                local chezmoi_arch
+                case "$(uname -m)" in
+                    x86_64)  chezmoi_arch="amd64" ;;
+                    aarch64) chezmoi_arch="arm64" ;;
+                    *) warn "Unsupported arch for chezmoi: $(uname -m)"; chezmoi_arch="" ;;
+                esac
+                if [[ -n "$chezmoi_arch" ]]; then
+                    local chezmoi_url="https://github.com/twpayne/chezmoi/releases/latest/download/chezmoi-linux-${chezmoi_arch}"
+                    local chezmoi_tmp
+                    chezmoi_tmp="$(mktemp -d)"
+                    if $DRY_RUN; then
+                        echo -e "${YELLOW}[DRY-RUN]${NC} curl -fsSL $chezmoi_url -o $chezmoi_tmp/chezmoi && sudo cp $chezmoi_tmp/chezmoi /usr/local/bin/chezmoi && sudo chmod +x /usr/local/bin/chezmoi"
+                    else
+                        if curl -fsSL "$chezmoi_url" -o "$chezmoi_tmp/chezmoi" \
+                            && sudo cp "$chezmoi_tmp/chezmoi" /usr/local/bin/chezmoi \
+                            && sudo chmod +x /usr/local/bin/chezmoi; then
+                            success "chezmoi installed from GitHub releases"
+                        else
+                            warn "Could not install chezmoi — skipping"
+                        fi
+                        rm -rf "$chezmoi_tmp"
+                    fi
+                fi
+            fi
+        fi
+    else
+        info "Skipping chezmoi (not selected)"
+    fi
+
+    # atuin — 魔法 Shell 历史记录管理器与多机器同步工具（选装）
+    if is_opt_enabled atuin; then
+        if has_cmd atuin; then
+            success "atuin already installed"
+        else
+            info "Installing atuin (shell history sync)..."
+            if apt-cache show atuin &>/dev/null 2>&1 && run_cmd sudo apt-get install -y atuin; then
+                success "atuin installed via apt"
+            elif install_bundled_bin atuin; then
+                :
+            else
+                info "Downloading atuin from GitHub releases..."
+                local atuin_arch
+                case "$(uname -m)" in
+                    x86_64)  atuin_arch="x86_64" ;;
+                    aarch64) atuin_arch="aarch64" ;;
+                    *) warn "Unsupported arch for atuin: $(uname -m)"; atuin_arch="" ;;
+                esac
+                if [[ -n "$atuin_arch" ]]; then
+                    local atuin_url="https://github.com/atuinsh/atuin/releases/latest/download/atuin-${atuin_arch}-unknown-linux-musl.tar.gz"
+                    local atuin_tmp
+                    atuin_tmp="$(mktemp -d)"
+                    if $DRY_RUN; then
+                        echo -e "${YELLOW}[DRY-RUN]${NC} curl -fsSL $atuin_url | tar xz -C $atuin_tmp && sudo cp $atuin_tmp/atuin-*/atuin /usr/local/bin/atuin && sudo chmod +x /usr/local/bin/atuin"
+                    else
+                        if curl -fsSL "$atuin_url" | tar xz -C "$atuin_tmp" \
+                            && sudo cp "$atuin_tmp"/atuin-*/atuin /usr/local/bin/atuin \
+                            && sudo chmod +x /usr/local/bin/atuin; then
+                            success "atuin installed from GitHub releases"
+                        else
+                            warn "Could not install atuin — skipping"
+                        fi
+                        rm -rf "$atuin_tmp"
+                    fi
+                fi
+            fi
+        fi
+    else
+        info "Skipping atuin (not selected)"
     fi
 
     # Ensure ~/.local/bin is in PATH
@@ -729,7 +1122,9 @@ echo -e "${BOLD}═════════════════════�
 echo -e "${BOLD}  🟢 Step 7/9: fnm + Node.js (optional)${NC}"
 echo -e "${BOLD}══════════════════════════════════════════${NC}"
 
-if has_cmd fnm; then
+if ! is_opt_enabled fnm; then
+    info "Skipping fnm + Node.js (not selected)"
+elif has_cmd fnm; then
     success "fnm already installed"
     # Load fnm in current shell so we can install Node
     eval "$(fnm env --use-on-cd --shell bash)"
@@ -743,40 +1138,27 @@ if has_cmd fnm; then
         success "Node LTS already installed"
     fi
 else
-    echo ""
-    echo -e "  ${YELLOW}⚠ WARNING: fnm manages its own Node.js versions.${NC}"
-    echo -e "  ${YELLOW}  If you already have Node.js installed (e.g. via nvm, Homebrew, or system),${NC}"
-    echo -e "  ${YELLOW}  fnm may shadow your existing Node/npm and tools installed globally${NC}"
-    echo -e "  ${YELLOW}  (e.g. Claude Code, Codex CLI, pnpm global packages).${NC}"
-    echo -e "  ${YELLOW}  Only install fnm if you need to manage multiple Node versions.${NC}"
-    echo ""
-    printf "  Install fnm + Node.js? (y/N, default: N): "
-    read -r INSTALL_FNM
-    if [[ "$INSTALL_FNM" =~ ^[Yy]$ ]]; then
-        case "$OS" in
-            macos)
-                info "Installing fnm (Fast Node Manager)..."
-                run_cmd brew install fnm
-                ;;
-            debian|wsl)
-                info "Installing fnm via official installer..."
-                run_cmd bash -c "$(curl -fsSL https://fnm.vercel.app/install)" -- --skip-shell
-                export PATH="$HOME/.local/share/fnm:$PATH"
-                ;;
-        esac
-        success "fnm installed"
+    case "$OS" in
+        macos)
+            info "Installing fnm (Fast Node Manager)..."
+            run_cmd brew install fnm
+            ;;
+        debian|wsl)
+            info "Installing fnm via official installer..."
+            run_cmd bash -c "$(curl -fsSL https://fnm.vercel.app/install)" -- --skip-shell
+            export PATH="$HOME/.local/share/fnm:$PATH"
+            ;;
+    esac
+    success "fnm installed"
 
-        # Load fnm in current shell so we can install Node
-        if has_cmd fnm; then
-            eval "$(fnm env --use-on-cd --shell bash)"
-            info "Installing Node LTS..."
-            run_cmd fnm install --lts
-            run_cmd fnm default lts-latest
-            run_cmd fnm use lts-latest
-            success "Node LTS installed and set as default"
-        fi
-    else
-        info "Skipping fnm + Node.js"
+    # Load fnm in current shell so we can install Node
+    if has_cmd fnm; then
+        eval "$(fnm env --use-on-cd --shell bash)"
+        info "Installing Node LTS..."
+        run_cmd fnm install --lts
+        run_cmd fnm default lts-latest
+        run_cmd fnm use lts-latest
+        success "Node LTS installed and set as default"
     fi
 fi
 
@@ -791,53 +1173,48 @@ echo -e "${BOLD}═════════════════════�
 # 在 macOS 下通过 Homebrew 安装，在 Linux 下优先使用本地预置二进制包，
 # 若无预置文件则自动从 GitHub Releases 下载对应架构的 musl 构建包并解压安装到 /usr/local/bin
 install_zellij() {
+    if ! is_opt_enabled zellij; then
+        info "Skipping Zellij (not selected)"
+        return 0
+    fi
+
     if has_cmd zellij; then
         success "Zellij already installed"
         return 0
     fi
 
-    echo ""
-    echo -e "  Zellij is a modern terminal multiplexer (like tmux, but better UX)."
-    printf "  Install Zellij? (y/N): "
-    read -r INSTALL_ZELLIJ
-    if [[ "$INSTALL_ZELLIJ" =~ ^[Yy]$ ]]; then
-        case "$OS" in
-            macos)
-                info "Installing Zellij..."
-                run_cmd brew install zellij
-                ;;
-            debian|wsl)
-                info "Installing Zellij..."
-                if [[ -f "$SCRIPT_DIR/bin/linux-x86_64/zellij" ]]; then
-                    run_cmd sudo cp "$SCRIPT_DIR/bin/linux-x86_64/zellij" /usr/local/bin/zellij
-                    run_cmd sudo chmod +x /usr/local/bin/zellij
+    info "Installing Zellij..."
+    case "$OS" in
+        macos)
+            run_cmd brew install zellij
+            ;;
+        debian|wsl)
+            if [[ -f "$SCRIPT_DIR/bin/linux-x86_64/zellij" ]]; then
+                run_cmd sudo cp "$SCRIPT_DIR/bin/linux-x86_64/zellij" /usr/local/bin/zellij
+                run_cmd sudo chmod +x /usr/local/bin/zellij
+            else
+                info "Downloading Zellij from GitHub releases..."
+                local zellij_arch
+                case "$(uname -m)" in
+                    x86_64)  zellij_arch="x86_64" ;;
+                    aarch64) zellij_arch="aarch64" ;;
+                    *) warn "Unsupported arch for Zellij: $(uname -m)"; return 0 ;;
+                esac
+                local zellij_url="https://github.com/zellij-org/zellij/releases/latest/download/zellij-${zellij_arch}-unknown-linux-musl.tar.gz"
+                local zellij_tmp
+                zellij_tmp="$(mktemp -d)"
+                if $DRY_RUN; then
+                    echo -e "${YELLOW}[DRY-RUN]${NC} curl -fsSL $zellij_url | tar xz -C $zellij_tmp && sudo cp $zellij_tmp/zellij /usr/local/bin/"
                 else
-                    # Download binary from GitHub releases (zellij.dev/launch auto-starts zellij, which hangs the script)
-                    info "Downloading Zellij from GitHub releases..."
-                    local zellij_arch
-                    case "$(uname -m)" in
-                        x86_64)  zellij_arch="x86_64" ;;
-                        aarch64) zellij_arch="aarch64" ;;
-                        *) warn "Unsupported arch for Zellij: $(uname -m)"; return 0 ;;
-                    esac
-                    local zellij_url="https://github.com/zellij-org/zellij/releases/latest/download/zellij-${zellij_arch}-unknown-linux-musl.tar.gz"
-                    local zellij_tmp
-                    zellij_tmp="$(mktemp -d)"
-                    if $DRY_RUN; then
-                        echo -e "${YELLOW}[DRY-RUN]${NC} curl -fsSL $zellij_url | tar xz -C $zellij_tmp && sudo cp $zellij_tmp/zellij /usr/local/bin/"
-                    else
-                        curl -fsSL "$zellij_url" | tar xz -C "$zellij_tmp" \
-                            && sudo cp "$zellij_tmp/zellij" /usr/local/bin/zellij \
-                            && sudo chmod +x /usr/local/bin/zellij
-                        rm -rf "$zellij_tmp"
-                    fi
+                    curl -fsSL "$zellij_url" | tar xz -C "$zellij_tmp" \
+                        && sudo cp "$zellij_tmp/zellij" /usr/local/bin/zellij \
+                        && sudo chmod +x /usr/local/bin/zellij
+                    rm -rf "$zellij_tmp"
                 fi
-                ;;
-        esac
-        success "Zellij installed"
-    else
-        info "Skipping Zellij"
-    fi
+            fi
+            ;;
+    esac
+    success "Zellij installed"
 }
 
 install_zellij
@@ -893,14 +1270,49 @@ if [[ -f "$HOME/.config/starship.toml" ]]; then
     run_cmd cp "$HOME/.config/starship.toml" "$HOME/.config/starship.toml.bak.$(date +%s)"
     warn "Backed up existing starship.toml"
 fi
-info "Applying Starship gruvbox-rainbow preset..."
-if has_cmd starship || $DRY_RUN; then
-    run_cmd starship preset gruvbox-rainbow -o "$HOME/.config/starship.toml"
-else
-    run_cmd cp "$CONFIGS_DIR/starship.toml" "$HOME/.config/starship.toml"
-fi
+case "$OS" in
+    macos)
+        info "Applying Starship catppuccin-powerline preset for macOS..."
+        if has_cmd starship || $DRY_RUN; then
+            run_cmd starship preset catppuccin-powerline -o "$HOME/.config/starship.toml"
+        else
+            run_cmd cp "$CONFIGS_DIR/starship.toml" "$HOME/.config/starship.toml"
+        fi
+        ;;
+    debian|wsl)
+        info "Applying Starship gruvbox-rainbow preset for Linux..."
+        if has_cmd starship || $DRY_RUN; then
+            run_cmd starship preset gruvbox-rainbow -o "$HOME/.config/starship.toml"
+        else
+            run_cmd cp "$CONFIGS_DIR/starship.toml" "$HOME/.config/starship.toml"
+        fi
+        ;;
+esac
 success "Starship config deployed"
 
+# --- Fastfetch config (examples/25 预设) ---
+if is_opt_enabled fastfetch || has_cmd fastfetch; then
+    FASTFETCH_CONFIG_DIR="$HOME/.config/fastfetch"
+    mkdir -p "$FASTFETCH_CONFIG_DIR"
+    if [[ -f "$FASTFETCH_CONFIG_DIR/config.jsonc" ]]; then
+        run_cmd cp "$FASTFETCH_CONFIG_DIR/config.jsonc" "$FASTFETCH_CONFIG_DIR/config.jsonc.bak.$(date +%s)"
+        warn "Backed up existing fastfetch config.jsonc"
+    fi
+    run_cmd cp "$CONFIGS_DIR/fastfetch.jsonc" "$FASTFETCH_CONFIG_DIR/config.jsonc"
+    success "Fastfetch config (examples/25) deployed"
+fi
+
+# --- Yazi config (自适应大预览布局) ---
+if is_opt_enabled yazi || has_cmd yazi; then
+    YAZI_CONFIG_DIR="$HOME/.config/yazi"
+    mkdir -p "$YAZI_CONFIG_DIR"
+    if [[ -f "$YAZI_CONFIG_DIR/yazi.toml" ]]; then
+        run_cmd cp "$YAZI_CONFIG_DIR/yazi.toml" "$YAZI_CONFIG_DIR/yazi.toml.bak.$(date +%s)"
+        warn "Backed up existing yazi.toml"
+    fi
+    run_cmd cp "$CONFIGS_DIR/yazi.toml" "$YAZI_CONFIG_DIR/yazi.toml"
+    success "Yazi config (wide preview ratio) deployed"
+fi
 # --- Shell-specific config ---
 if [[ "$SHELL_CHOICE" == "fish" ]]; then
     # Fish config
@@ -978,6 +1390,23 @@ FISHEOF
         success "Zoxide init already present"
     fi
 
+    # Atuin init for fish
+    if ! grep -qF "atuin init fish" "$FISH_CONFIG_DIR/config.fish" 2>/dev/null; then
+        info "Adding atuin init to fish config..."
+        if ! $DRY_RUN; then
+        cat >> "$FISH_CONFIG_DIR/config.fish" << 'ATUINEOF'
+
+# atuin (shell history sync)
+if command -q atuin
+    atuin init fish --disable-up-arrow | source
+end
+ATUINEOF
+        fi
+        success "Atuin init added to fish config"
+    else
+        success "Atuin init already present"
+    fi
+
     # Add ~/.local/bin to fish PATH on Linux
     if [[ "$OS" == "debian" || "$OS" == "wsl" ]]; then
         if ! grep -qF '.local/bin' "$FISH_CONFIG_DIR/config.fish" 2>/dev/null; then
@@ -1044,20 +1473,27 @@ else
     echo -e "    ✨ zsh-autosuggestions   — fish-like suggestions"
     echo -e "    🎨 zsh-syntax-highlight — fish-like highlighting"
 fi
-echo -e "    🚀 Starship             — prompt (Gruvbox Rainbow)"
+case "$OS" in
+    macos)
+        echo -e "    🚀 Starship             — prompt (Catppuccin Powerline)"
+        ;;
+    debian|wsl)
+        echo -e "    🚀 Starship             — prompt (Gruvbox Rainbow)"
+        ;;
+esac
 echo -e "    🔤 MesloLGS NF          — nerd font"
-echo -e "    🟢 fnm                  — Node version manager (fast!)"
 echo -e "    📦 bat eza fd rg        — modern coreutils"
-echo -e "    📊 btop                 — system monitor"
-echo -e "    🔀 lazygit + delta      — git tools"
 echo -e "    📁 zoxide               — smart cd"
 echo -e "    🔍 fzf                  — fuzzy finder"
-if has_cmd yazi; then
-    echo -e "    🗂  yazi                 — terminal file manager"
-fi
-if has_cmd zellij; then
-    echo -e "    🪟 zellij               — terminal multiplexer"
-fi
+(is_opt_enabled btop || has_cmd btop) && echo -e "    📊 btop                 — system monitor"
+(is_opt_enabled lazygit || has_cmd lazygit) && echo -e "    🔀 lazygit + delta      — git tools"
+(is_opt_enabled jd || has_cmd jd) && echo -e "    📑 jd                   — JSON & YAML diff/patch"
+(is_opt_enabled fastfetch || has_cmd fastfetch) && echo -e "    💻 fastfetch            — system info (examples/25)"
+(is_opt_enabled yazi || has_cmd yazi) && echo -e "    🗂  yazi                 — terminal file manager"
+(is_opt_enabled chezmoi || has_cmd chezmoi) && echo -e "    🏠 chezmoi              — dotfiles manager"
+(is_opt_enabled atuin || has_cmd atuin) && echo -e "    📜 atuin                — shell history sync"
+(is_opt_enabled zellij || has_cmd zellij) && echo -e "    🪟 zellij               — terminal multiplexer"
+(is_opt_enabled fnm || has_cmd fnm) && echo -e "    🟢 fnm                  — Node version manager (fast!)"
 echo ""
 echo -e "  ${YELLOW}Next steps:${NC}"
 echo -e "    1. Restart your terminal (or open ${BOLD}Ghostty${NC})"
